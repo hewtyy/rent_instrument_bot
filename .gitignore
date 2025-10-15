@@ -1,0 +1,38 @@
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+
+# Environments
+env/
+venv/
+.venv/
+.Python
+
+# Env files
+.env
+bot/.env
+
+# Data / DB
+data/
+bot/data/
+*.db
+
+# Local catalogs/uploads (runtime inside container)
+catalog.csv
+bot/uploads/
+
+# Docker build caches (optional)
+.dockerignore
+

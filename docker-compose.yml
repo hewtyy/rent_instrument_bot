@@ -1,0 +1,21 @@
+services:
+  bot:
+    build: .
+    container_name: tool_rent_bot
+    restart: always
+    env_file:
+      - ./bot/.env
+    volumes:
+      - ./bot:/app
+      - bot_data:/app/data
+    networks:
+      - bot_network
+
+volumes:
+  bot_data:
+
+networks:
+  bot_network:
+    driver: bridge
+
+
