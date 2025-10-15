@@ -132,3 +132,39 @@ docker compose logs -f bot
 ```bash
 docker compose up -d --build
 ```
+
+## Быстрый старт (GitHub → запуск)
+1) Клонируйте репозиторий:
+```bash
+git clone https://github.com/USER/tool_rent_bot.git
+cd tool_rent_bot
+```
+2) Создайте `bot/.env` (см. раздел «Настройка окружения»).
+3) Запустите:
+```bash
+docker compose up -d --build
+```
+4) Проверьте логи: `docker compose logs -f bot`
+
+## Импорт catalog.csv с хоста
+- Положите файл `catalog.csv` рядом с проектом и выполните:
+  - Linux/macOS:
+    ```bash
+    docker compose cp ./catalog.csv bot:/app/data/catalog.csv
+    docker compose exec bot python -c "import database; import asyncio; from database import import_catalog_from_csv; asyncio.run(import_catalog_from_csv('/app/data/catalog.csv')); print('OK')"
+    ```
+  - Windows PowerShell:
+    ```powershell
+    docker compose cp .\catalog.csv bot:/app/data/catalog.csv
+    docker compose exec bot python -c "import database; import asyncio; from database import import_catalog_from_csv; asyncio.run(import_catalog_from_csv('/app/data/catalog.csv')); print('OK')"
+    ```
+- Альтернатива: отправьте CSV-файл прямо в чат боту — он импортируется автоматически.
+
+## Обновление из GitHub
+```bash
+git pull
+# при изменении зависимостей
+docker compose up -d --build
+# иначе достаточно
+docker compose restart bot
+```
