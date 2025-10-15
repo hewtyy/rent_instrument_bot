@@ -22,8 +22,8 @@
 ## 1. Быстрый старт (GitHub → запуск)
 1) Клонируйте репозиторий:
 ```bash
-git clone https://github.com/USER/tool_rent_bot.git
-cd tool_rent_bot
+https://github.com/hewtyy/rent_instrument_bot.git
+cd bot_rent_instr
 ```
 2) Создайте `bot/.env` (см. раздел «[5. Настройка окружения](#5-настройка-окружения)»).
 3) Запустите:
