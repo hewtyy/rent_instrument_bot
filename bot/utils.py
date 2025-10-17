@@ -83,9 +83,47 @@ def format_daily_report_with_revenue(date: str, rows: List[dict], revenue_sum: i
         base = "📊 Ежедневный отчёт:\n✅ Активных аренд нет."
     else:
         lines = ["📊 Ежедневный отчёт:"]
+        total_deposits = 0
         for r in rows:
-            lines.append(f"- {r['tool_name']} — {r['rent_price']}₽")
+            deposit = int(r.get("deposit", 0))
+            payment_method = r.get("payment_method", "cash")
+            delivery_type = r.get("delivery_type", "pickup")
+            
+            payment_icon = "💵" if payment_method == "cash" else "💳"
+            delivery_icon = "🚚" if delivery_type == "delivery" else "🏠"
+            
+            lines.append(f"- {r['tool_name']} — {r['rent_price']}₽ {payment_icon}{delivery_icon}")
+            if deposit > 0:
+                lines.append(f"  💰 Залог: {deposit}₽")
+                total_deposits += deposit
+        
+        if total_deposits > 0:
+            lines.append(f"\n💰 Общая сумма залогов: {total_deposits}₽")
+        
         base = "\n".join(lines)
     return base + f"\n📅 Дата: {date}\n💵 Выручка за день: {revenue_sum}₽"
+
+
+def format_remaining_time(start_time_ts: int) -> str:
+    # Расчёт в POSIX-секундах, чтобы исключить любые эффекты TZ/DST
+    import time
+    day_sec = 24 * 3600
+    now_sec = int(time.time())
+    total_sec = (int(start_time_ts) + day_sec) - now_sec
+    if total_sec <= 0:
+        return "срок истёк"
+    # ceil до минуты
+    minute = 60
+    total_sec = ((total_sec + minute - 1) // minute) * minute
+    hours = total_sec // 3600
+    minutes = (total_sec % 3600) // 60
+    return f"{hours:02d}:{minutes:02d}"
+
+
+def format_local_end_time_hhmm(start_time_ts: int) -> str:
+    from datetime import timedelta
+    tz = _tz()
+    end_dt = datetime.fromtimestamp(int(start_time_ts), tz=tz) + timedelta(hours=24)
+    return end_dt.strftime("%H:%M")
 
 

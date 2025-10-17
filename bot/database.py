@@ -33,7 +33,11 @@ async def init_db() -> None:
                     rent_price INTEGER NOT NULL,
                     start_time INTEGER NOT NULL,
                     user_id INTEGER NOT NULL,
-                    active INTEGER NOT NULL DEFAULT 1
+                    active INTEGER NOT NULL DEFAULT 1,
+                    deposit INTEGER DEFAULT 0,
+                    payment_method TEXT DEFAULT 'cash',
+                    delivery_type TEXT DEFAULT 'pickup',
+                    address TEXT DEFAULT ''
                 );
                 """
             )
@@ -42,6 +46,23 @@ async def init_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_rentals_active ON rentals(active);
                 """
             )
+            # Миграция: добавляем новые поля если их нет
+            try:
+                conn.execute("ALTER TABLE rentals ADD COLUMN deposit INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            try:
+                conn.execute("ALTER TABLE rentals ADD COLUMN payment_method TEXT DEFAULT 'cash'")
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            try:
+                conn.execute("ALTER TABLE rentals ADD COLUMN delivery_type TEXT DEFAULT 'pickup'")
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            try:
+                conn.execute("ALTER TABLE rentals ADD COLUMN address TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS tools (
@@ -85,20 +106,23 @@ async def _connect() -> Any:
         await loop.run_in_executor(None, conn.close)
 
 
-async def add_rental(tool_name: str, rent_price: int, user_id: int) -> int:
-    start_ts = int(datetime.utcnow().timestamp())
+async def add_rental(tool_name: str, rent_price: int, user_id: int, deposit: int = 0, 
+                    payment_method: str = 'cash', delivery_type: str = 'pickup', address: str = '') -> int:
+    import time
+    start_ts = int(time.time())
     loop = asyncio.get_running_loop()
     async with _connect() as conn:
         def _exec() -> int:
             cur = conn.execute(
-                "INSERT INTO rentals(tool_name, rent_price, start_time, user_id, active) VALUES (?, ?, ?, ?, 1)",
-                (tool_name, rent_price, start_ts, user_id),
+                "INSERT INTO rentals(tool_name, rent_price, start_time, user_id, active, deposit, payment_method, delivery_type, address) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                (tool_name, rent_price, start_ts, user_id, deposit, payment_method, delivery_type, address),
             )
             conn.commit()
             return int(cur.lastrowid)
 
         rental_id = await loop.run_in_executor(None, _exec)
-        logger.info("Rental added: id=%s, tool=%s, price=%s, user=%s", rental_id, tool_name, rent_price, user_id)
+        logger.info("Rental added: id=%s, tool=%s, price=%s, user=%s, deposit=%s, payment=%s, delivery=%s", 
+                   rental_id, tool_name, rent_price, user_id, deposit, payment_method, delivery_type)
         return rental_id
 
 
@@ -131,10 +155,29 @@ async def close_rental(rental_id: int) -> None:
 
 
 async def renew_rental(rental_id: int) -> None:
-    new_start = int(datetime.utcnow().timestamp())
+    """Extend rental by +24h from the later of (now, current expiry).
+
+    We store start_time as (expiry - 24h). On renewal we compute:
+      old_expiry = start_time + 24h
+      new_expiry = max(now, old_expiry) + 24h
+      new_start_time = new_expiry - 24h
+    """
+    import time
     loop = asyncio.get_running_loop()
+
     async with _connect() as conn:
         def _exec() -> None:
+            cur = conn.execute("SELECT start_time FROM rentals WHERE id = ?", (rental_id,))
+            row = cur.fetchone()
+            if not row:
+                return
+            start_time = int(row["start_time"])  # type: ignore[index]
+            day = 24 * 3600
+            now_sec = int(time.time())
+            old_expiry = start_time + day
+            base = now_sec if now_sec > old_expiry else old_expiry
+            new_expiry = base + day
+            new_start = new_expiry - day
             conn.execute(
                 "UPDATE rentals SET start_time = ?, active = 1 WHERE id = ?",
                 (new_start, rental_id),
@@ -142,7 +185,7 @@ async def renew_rental(rental_id: int) -> None:
             conn.commit()
 
         await loop.run_in_executor(None, _exec)
-        logger.info("Rental renewed: id=%s", rental_id)
+        logger.info("Rental renewed (+24h from existing): id=%s", rental_id)
 
 
 async def get_rental_by_id(rental_id: int) -> Optional[Dict[str, Any]]:
@@ -310,6 +353,20 @@ async def delete_tool(tool_id: int) -> None:
             conn.commit()
 
         await loop.run_in_executor(None, _exec)
+
+
+async def reset_rental_start_now(rental_id: int) -> None:
+    """Force start_time to now (useful to sync timer to 24:00)."""
+    import time
+    new_start = int(time.time())
+    loop = asyncio.get_running_loop()
+    async with _connect() as conn:
+        def _exec() -> None:
+            conn.execute("UPDATE rentals SET start_time = ?, active = 1 WHERE id = ?", (new_start, rental_id))
+            conn.commit()
+
+        await loop.run_in_executor(None, _exec)
+        logger.info("Rental start_time reset to now: id=%s", rental_id)
 
 
 async def sum_revenue_by_date_for_user(date: str, user_id: int) -> int:

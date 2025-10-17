@@ -9,7 +9,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 import os
-from database import get_rental_by_id, all_active_for_reschedule, get_active_rentals, add_revenue, sum_revenue_by_date_for_user
+from database import get_rental_by_id, all_active_for_reschedule, get_active_rentals, sum_revenue_by_date_for_user
 from utils import ts_to_moscow_date_str, moscow_today_str, format_daily_report_with_revenue
 
 logger = logging.getLogger(__name__)
@@ -31,13 +31,7 @@ class SchedulerService:
             id="daily_report",
             replace_existing=True,
         )
-        # Nightly flush at 23:59 local TZ to collect daily revenues for active items
-        self.scheduler.add_job(
-            self._flush_daily_revenues_job,
-            CronTrigger(hour=23, minute=59, timezone=self.timezone),
-            id="revenues_flush",
-            replace_existing=True,
-        )
+        # Nightly flush removed - revenue is now recorded at rental creation
         # Reschedule expiration for existing active rentals
         await self._reschedule_all_active()
         logger.info("Scheduler started with timezone %s", self.timezone)
@@ -121,13 +115,6 @@ class SchedulerService:
                     await self.bot.send_message(chat_id=admin_uid, text=text)
                 except Exception as e:
                     logger.exception("Failed to send admin daily report: %s", e)
-
-    async def _flush_daily_revenues_job(self) -> None:
-        # На границе суток фиксируем по одному дню выручки для всех активных аренд
-        rows = await get_active_rentals()
-        for r in rows:
-            date_key = ts_to_moscow_date_str(int(r["start_time"]))
-            await add_revenue(date_key, int(r["id"]), int(r["rent_price"]))
 
     # --- Helper methods for testing ---
     async def send_daily_report_for_user(self, user_id: int) -> None:
